@@ -28,9 +28,9 @@ library(knitr)
 Please indicate
 
 * Who you collaborated with:
-* Roughly how much time you spent on this HW so far:
-* The URL of the RPubs published URL [here](https://www.nhl.com/).
-* What gave you the most trouble:
+* Roughly how much time you spent on this HW so far: 4
+* The URL of the RPubs published URL [here](http://rpubs.com/connormccormick/hw3).
+* What gave you the most trouble: Dealing with the separted variables in the jukebox dataframe
 * Any comments you have:
 
 
