@@ -1,6 +1,6 @@
 ---
 title: "MATH 216 Homework 3"
-author: "WRITE YOUR NAME HERE"
+author: "Connor"
 output:
   html_document:
     toc: true
@@ -15,6 +15,10 @@ library(dplyr)
 library(readr)
 library(lubridate)
 library(Quandl)
+library(forcats)
+library(tidyverse)
+library(norm)
+library(knitr)
 ```
 
 
@@ -56,7 +60,7 @@ correctly predicted.
 # To keep this exercise simple, let's remove the only 3 users (0.005% of users)
 # who did not list a height, define the outcome variable, and add an ID variable
 # to distinguish the users
-profiles <- read_csv(file="profiles.csv") %>% 
+profiles <- read_csv(file="profiles copy.csv") %>% 
   filter(!is.na(height)) %>% 
   mutate(is_female=ifelse(sex=='f', 1, 0)) %>% 
   tibble::rownames_to_column(var="id")
@@ -80,7 +84,63 @@ to rate how well we performed.
 * Be sure to incorporate all the insight your garnered in your EDA in HW-2.
 
 ```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
-set.seed(76)
+cleanprofiles <- profiles %>%
+  select(id, sex, income, job, pets, is_female) %>%
+  mutate(petowners = fct_recode(pets,
+                            # New name = old name
+                           "dogs" = "has dogs",
+                           "dogs" = "has dogs and dislikes cats",
+                           "dogs" = "has dogs and likes cats",
+                           "both" = "has dogs and has cats",
+                           "cats" = "has cats",
+                           "cats" = "dislikes dogs and has cats",
+                           "cats" = "likes dogs and has cats",
+                           "neither" = "dislikes cats",
+                           "neither" = "dislikes dogs",
+                           "neither" = "dislikes dogs and dislikes cats",
+                           "neither" = "dislikes dogs and likes cats",
+                           "neither" = "likes cats",
+                           "neither" = "likes dogs",
+                           "neither" = "likes dogs and dislikes cats",
+                           "neither" = "likes dogs and likes cats"
+  )) 
+  
+
+cleaner <- cleanprofiles %>%
+  mutate(job = fct_recode(job, 
+                          "other" = "military",
+                          "other" = "unemployed",
+                          "other" = "transportation",
+                          "other" = "retired",
+                          "other" = "rather not say",
+                          "other" = "political / government",
+                          "other" = "clerical / administrative",
+                          "other" = "hospitality / travel",
+                          "other" = "law / legal services",
+                          "other" = "construction / craftsmanship"
+    ))
+
+newclean <- cleaner %>%
+  select(id, income, job, is_female, petowners) %>%
+  mutate(petowners = ifelse(is.na(petowners), "N/A", as.character(petowners))) %>%
+  mutate(job = ifelse(is.na(job), "N/A", as.character(job)))
+
+set.seed(21)
+training <- sample_n(newclean, 2997)
+test <- newclean %>%
+  filter(!(id %in% training$id))
+
+#graph to show proportion by sex
+gender <- training %>%
+  group_by(is_female) %>%
+  tally()%>%
+  rename(gender = n) %>%
+  mutate(prop = gender/sum(gender))
+
+ggplot(gender, aes(x = as.factor(is_female), y = prop)) +
+  geom_bar(stat = "identity", position = "dodge", fill = "cadetblue2", color = "darkslateblue", width = .65) +
+  theme_minimal() +
+  labs(title = "Proportion by Sex of Sample", x = "Sex", y = "Proportion")  
 
 ```
 
@@ -93,7 +153,31 @@ regression model to the `training` data. Assign this model to an R object called
 `predict_sex_model`, then rate how well the model performs on the `training` data.
 
 ```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+#regression
+predictsexmodel <- glm(is_female ~ 1 + income + job + petowners, data=training, family="binomial")
 
+predictions <- training %>%
+  select(income, job, petowners, is_female) %>%
+  mutate(p_hat1 = fitted(predictsexmodel))
+
+predictions_tidy <- predictions %>%
+  gather(type, fitted_prob, -c(is_female, job, income, petowners))
+
+#How did the model do?
+prophecy <- predictions_tidy %>%
+  mutate(guess = ifelse(fitted_prob>=.5, 1, 0))
+
+errors <- prophecy %>%
+  mutate(correct = ifelse(guess==is_female, 1, 0))
+  
+propwrong <- errors %>%
+  summarize(1 - mean(correct))
+kable(propwrong)
+
+sexpropwrong <- errors %>%
+  group_by(is_female) %>%
+  summarize(1-mean(correct))
+kable(sexpropwrong)
 ```
 
 
@@ -107,6 +191,29 @@ for each users' sex, then rate how well the model performs on the `test` data.
 type="response")` does? The help file is located in `?predict.glm`
 
 ```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+test <- test %>% 
+  select(income, job, is_female, petowners) %>%
+  mutate(phat=predict(predictsexmodel, newdata = test, type = "response"))
+
+testpredictions_tidy <- test %>%
+  gather(type, fitted_prob, -c(is_female, job, income, petowners))
+
+#How did the model do for the test?
+testprophecy <- testpredictions_tidy %>%
+  mutate(guess = ifelse(fitted_prob>=.5, 1, 0))
+
+testerrors <- testprophecy %>%
+  mutate(correct = ifelse(guess==is_female, 1, 0))
+  
+testpropwrong <- testerrors %>%
+  summarize(1 - mean(correct))
+kable(testpropwrong)
+
+testsexpropwrong <- testerrors %>%
+  group_by(is_female) %>%
+  summarize(1-mean(correct))
+kable(testsexpropwrong)
+
 
 ```
 
@@ -117,7 +224,7 @@ type="response")` does? The help file is located in `?predict.glm`
 Did the model perform better on the `training` data or the `test` data? Why
 do you think that is?
 
-
+The model performed marginally better in the test data than in the training data.  The model was wrong 35.40% of the time in the training compared to 35.39% in the test. Surprisingly, the model performed better for men in the test and better for women in the training.   
 
 
 
@@ -135,6 +242,40 @@ Let the reference currency be US dollars. Analyze these results and provide
 insight to a foreign currency exchanger.
 
 ```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+bitcoin <- Quandl("BAVERAGE/USD") %>%
+  tbl_df() %>%
+  rename(
+    Avg = `24h Average`,
+    Total_Volume = `Total Volume`
+  ) 
+
+gold <- Quandl("BUNDESBANK/BBK01_WT5511")
+
+bitcoin$lagged <- lead(bitcoin$Avg, 1)
+
+golddates <- interval(ymd("2010-07-17"), ymd("2016-04-15"))
+
+bitcoin <-bitcoin %>%
+  filter(!is.na(lagged)) %>%
+  filter(Date %within% golddates) %>%
+  mutate(lagvalue = Avg - lagged)
+
+gold$lagged <- lead(gold$Value, 1)
+
+bitcoindates <- interval(ymd("2010-07-17"), ymd("2016-10-22"))
+
+gold <-gold %>%
+  filter(!is.na(lagged)) %>%
+  filter(Date %within% bitcoindates) %>%
+  mutate(lagvalue = Value - lagged)
+  
+
+ggplot(bitcoin, aes(x = Date, y = lagvalue)) +
+  geom_line(color = "darkslateblue") +
+  geom_line(data = gold, color = "cadetblue2", alpha = .75)
+
+
+
 
 ```
 
@@ -177,6 +318,27 @@ the "graveyard shift" during the academic year? Define
 * the academic year as September through May (inclusive)
 
 ```{r, echo=TRUE, message=TRUE, warning=TRUE, fig.width=8, fig.height=4.5}
+graveyard <- jukebox %>%
+  mutate(date_time = parse_date_time(date_time, "a b d HMS Y")) %>%
+  separate(date_time, c("year", "month", "day", "hour", "minute", "seconds")) %>%
+  select(year, month, day, hour, minute, artist, track)
+
+schoolyard <- graveyard %>%
+  transform(month=as.numeric(month)) %>%
+  transform(hour=as.numeric(hour)) %>%
+  filter(!month== c(6, 7, 8)) %>%
+  filter(!hour>7) %>%
+  group_by(artist, track) %>%
+  tally() %>% 
+  rename(playcount = n) %>%
+  filter(!playcount < 228) %>%
+  unite(title, artist, track, sep = ":", remove = FALSE)
+
+ggplot(schoolyard, aes(x=fct_reorder(title, playcount), y=playcount)) +
+  geom_bar(stat = "identity", fill = "darkslateblue") +
+  coord_flip()+
+  labs(title="Most Popular Songs during the Graveyard Shift", x='Track Name', y='Play Count')
+
 
 ```
 
