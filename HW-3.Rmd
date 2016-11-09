@@ -333,11 +333,12 @@ schoolyard <- graveyard %>%
   transform(month=as.numeric(month)) %>%
   transform(hour=as.numeric(hour)) %>%
   filter(!month %in% c(6, 7, 8)) %>%
-  filter(!hour<8) %>%
+  filter(hour<8) %>%
   group_by(artist) %>%
   tally() %>% 
   rename(playcount = n) %>%
-  filter(!playcount < 894) 
+  top_n(10, playcount) %>% 
+  arrange(desc(playcount))
 
 ggplot(schoolyard, aes(x=fct_reorder(artist, playcount), y=playcount)) +
   geom_bar(stat = "identity", fill = "violetred4") +

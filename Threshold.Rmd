@@ -1,0 +1,131 @@
+---
+title: "Threshold"
+author: "Connor"
+date: "November 8, 2016"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(lubridate)
+library(Quandl)
+library(forcats)
+library(tidyverse)
+library(norm)
+library(knitr)
+
+profiles <- read_csv(file="profiles.csv") %>% 
+  filter(!is.na(height)) %>% 
+  mutate(is_female=ifelse(sex=='f', 1, 0)) %>% 
+  tibble::rownames_to_column(var="id")
+
+cleanprofiles <- profiles %>%
+  select(id, sex, income, job, pets, is_female) %>%
+  mutate(petowners = fct_recode(pets,
+                            # New name = old name
+                           "dogs" = "has dogs",
+                           "dogs" = "has dogs and dislikes cats",
+                           "dogs" = "has dogs and likes cats",
+                           "both" = "has dogs and has cats",
+                           "cats" = "has cats",
+                           "cats" = "dislikes dogs and has cats",
+                           "cats" = "likes dogs and has cats",
+                           "neither" = "dislikes cats",
+                           "neither" = "dislikes dogs",
+                           "neither" = "dislikes dogs and dislikes cats",
+                           "neither" = "dislikes dogs and likes cats",
+                           "neither" = "likes cats",
+                           "neither" = "likes dogs",
+                           "neither" = "likes dogs and dislikes cats",
+                           "neither" = "likes dogs and likes cats"
+  )) 
+  
+
+cleaner <- cleanprofiles %>%
+  mutate(job = fct_recode(job, 
+                          "other" = "military",
+                          "other" = "unemployed",
+                          "other" = "transportation",
+                          "other" = "retired",
+                          "other" = "rather not say",
+                          "other" = "political / government",
+                          "other" = "clerical / administrative",
+                          "other" = "hospitality / travel",
+                          "other" = "law / legal services",
+                          "other" = "construction / craftsmanship"
+    ))
+
+newclean <- cleaner %>%
+  select(id, income, job, is_female, petowners) %>%
+  mutate(petowners = ifelse(is.na(petowners), "N/A", as.character(petowners))) %>%
+  mutate(job = ifelse(is.na(job), "N/A", as.character(job)))
+
+set.seed(21)
+training <- sample_n(newclean, 2997)
+test <- newclean %>%
+  filter(!(id %in% training$id))
+
+predictsexmodel <- glm(is_female ~ income + job + petowners, data=training, family="binomial")
+
+test <- test %>% 
+  select(is_female, income, job, petowners) %>%
+  mutate(phat=predict(predictsexmodel, newdata = test, type = "response"))
+```
+
+This R Markdown document is made interactive using Shiny. Unlike the more traditional workflow of creating static reports, you can now create documents that allow your readers to change the assumptions underlying your analysis and see the results immediately. 
+
+To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are automatically updated whenever inputs change.  This demonstrates how a standard R plot can be made interactive by wrapping it in the Shiny `renderPlot` function. The `selectInput` and `sliderInput` functions create the input widgets used to drive the plot.
+
+```{r eruptions, echo=FALSE}
+
+
+inputPanel(
+  sliderInput("threshold", label = "Threshold for guessing female:",
+              min = 0, max = 1, value = .5, step = 0.1)
+)
+
+renderPrint({
+
+  testprophecy <- test %>%
+    mutate(guess = ifelse(phat>=input$threshold, 1, 0))
+
+  testerrors <- testprophecy %>%
+     mutate(correct = ifelse(guess==is_female, 1, 0))
+  
+  testpropwrong <- testerrors %>%
+    summarize(prop_wrong=1 - mean(correct))
+  
+  kable(testpropwrong)
+})
+
+renderPrint({
+    testprophecy <- test %>%
+    mutate(guess = ifelse(phat>=input$threshold, 1, 0))
+
+  testerrors <- testprophecy %>%
+     mutate(correct = ifelse(guess==is_female, 1, 0))
+  
+    testsexpropwrong <- testerrors %>%
+    group_by(is_female) %>%
+    summarize(prop_wrong=1-mean(correct))
+  
+  kable(testsexpropwrong)
+})
+
+
+
+```
+
+
+
+
+
